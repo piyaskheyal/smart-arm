@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# control_arm_live_perfect.py
+# control_arm_live_smooth.py
 # ------------------------------------------------------------
-# Isaac Sim 5.1.0 – Live Control + Tutorial-Style Scene
+# Isaac Sim 5.1.0 – Live Terminal Input + Smooth Motion
 # ------------------------------------------------------------
 
 from isaacsim import SimulationApp
@@ -13,7 +13,7 @@ from isaacsim.core.utils.stage import add_reference_to_stage
 from isaacsim.core.prims import Articulation
 from isaacsim.core.utils.viewports import set_camera_view
 from isaacsim.core.api.objects.ground_plane import GroundPlane
-from pxr import Sdf, UsdLux, Gf
+from pxr import UsdLux, Gf, Sdf
 import threading
 import queue
 import signal
@@ -29,21 +29,18 @@ ROBOT_PRIM_PATH = "/World/so101_new_calib"
 # SETUP: GROUND + LIGHT + CAMERA
 # ------------------------------------------------------------------
 world = World(stage_units_in_meters=1.0)
+GroundPlane(prim_path="/World/Ground", z_position=0.0)
 
-# === GRID GROUND PLANE (LIKE TUTORIALS) ===
-GroundPlane(prim_path="/World/GridGround", z_position=0.0)
-
-# === DISTANT LIGHT (SUN) ===
+# === LIGHT ===
 stage = world.scene.stage
-distant_light = UsdLux.DistantLight.Define(stage, Sdf.Path("/World/DistantLight"))
-distant_light.CreateIntensityAttr(500)  # Bright sun
-distant_light.CreateColorAttr(Gf.Vec3f(1.0, 1.0, 1.0))
-distant_light.CreateAngleAttr(0.5)  # Soft shadows
+light = UsdLux.DistantLight.Define(stage, Sdf.Path("/World/Light"))
+light.CreateIntensityAttr(1000)
+light.CreateColorAttr(Gf.Vec3f(1.0, 1.0, 1.0))
 
-# === CAMERA VIEW (LIKE getting_started_robot.py) ===
+# === CAMERA ===
 set_camera_view(
-    eye=[5.0, 0.0, 1.5],
-    target=[0.0, 0.0, 1.0],
+    eye=[5.0, 0.0, 2.0],
+    target=[0.0, 0.0, 0.5],
     camera_prim_path="/OmniverseKit_Persp"
 )
 
@@ -55,10 +52,16 @@ add_reference_to_stage(usd_path=USD_PATH, prim_path=ROBOT_PRIM_PATH)
 print("Creating Articulation...")
 arm = Articulation(prim_paths_expr=f"{ROBOT_PRIM_PATH}/.*", name="arm")
 
-# === PHYSICS START ===
+# === INITIALIZE ===
 print("Starting physics...")
 world.reset()
-world.step(render=True)  # Initialize DOFs
+arm.initialize()
+
+# Wait for joint states
+for _ in range(30):
+    world.step(render=True)
+    if arm.get_joint_velocities() is not None:
+        break
 
 print(f"DOFs: {arm.num_dof}")
 print("Joints:", arm.dof_names)
@@ -69,59 +72,60 @@ print("Joints:", arm.dof_names)
 input_queue = queue.Queue()
 
 def input_thread():
-    print("\n=== LIVE CONTROL ===")
-    print("Enter 6 numbers (e.g., 0.5 -0.3 1.0 0.2 0.0 0.04) → press Enter")
-    print("Type 'quit' to exit\n")
+    print("\n" + "="*60)
+    print("=== LIVE JOINT CONTROL ===")
+    print("Enter 6 numbers: shoulder_pan shoulder_lift elbow_flex wrist_flex wrist_roll gripper")
+    print("Example: 0.5 -0.3 1.0 0.2 0.0 0.04")
+    print("Type 'quit' to exit")
+    print("="*60)
     print(">>> ", end="", flush=True)
     while True:
         try:
             line = sys.stdin.readline().strip()
-            if not line:
-                continue
-            input_queue.put(line)
+            if line:
+                input_queue.put(line)
         except:
             break
 
 threading.Thread(target=input_thread, daemon=True).start()
 
 # ------------------------------------------------------------------
-# CTRL+C HANDLER
+# CTRL+C
 # ------------------------------------------------------------------
 def signal_handler(sig, frame):
     print("\n\nShutting down...")
     simulation_app.close()
     sys.exit(0)
-
 signal.signal(signal.SIGINT, signal_handler)
 
 # ------------------------------------------------------------------
-# MOTION CONTROL (SMOOTH)
+# MOTION CONTROL
 # ------------------------------------------------------------------
-current_pose = np.zeros(6)
-target_pose = np.zeros(6)
-motion_steps = 60  # frames to reach target
+current_pose = arm.get_joint_positions().copy()
+target_pose = current_pose.copy()
+motion_steps = 60
 motion_counter = 0
 is_moving = False
 
 def start_motion(new_target):
-    global target_pose, motion_counter, is_moving, current_pose
-    target_pose = np.array(new_target)
-    current_pose = arm.get_joint_positions()
+    global target_pose, current_pose, motion_counter, is_moving
+    target_pose = np.array(new_target, dtype=float)
+    current_pose = arm.get_joint_positions().copy()
     motion_counter = 0
     is_moving = True
 
 # ------------------------------------------------------------------
 # MAIN LOOP
 # ------------------------------------------------------------------
-print("Simulation running. Type poses below.\n")
+print("\nSimulation ready. Type joint values below.\n")
 
 try:
     while True:
-        # === PROCESS INPUT ===
+        # === INPUT ===
         try:
             line = input_queue.get_nowait()
             if line.lower() == "quit":
-                print("Quit command received.")
+                print("Quit received.")
                 break
 
             values = [float(x) for x in line.split()]
@@ -130,7 +134,7 @@ try:
                 print(">>> ", end="", flush=True)
                 continue
 
-            print(f"→ Smooth move to: {values}")
+            print(f"Moving to: {values}")
             start_motion(values)
 
         except queue.Empty:
@@ -139,21 +143,22 @@ try:
             print("ERROR: Invalid numbers!")
             print(">>> ", end="", flush=True)
 
-        # === INTERPOLATE IF MOVING ===
+        # === SMOOTH MOTION ===
         if is_moving:
             motion_counter += 1
-            t = motion_counter / motion_steps
+            t = min(motion_counter / motion_steps, 1.0)
+            t = t * t * (3 - 2 * t)  # Smoothstep
+            interp = current_pose * (1 - t) + target_pose * t
+            arm.set_joint_positions(interp)
             if t >= 1.0:
-                t = 1.0
                 is_moving = False
-            interp_pose = current_pose * (1 - t) + target_pose * t
-            arm.set_joint_positions(interp_pose)
+                current_pose = interp.copy()
         else:
-            # Hold last position
-            arm.set_joint_positions(arm.get_joint_positions())
+            # HOLD via USD drives
+            arm.set_joint_positions(target_pose)
 
-        # === STEP SIMULATION ===
         world.step(render=True)
 
 finally:
+    print("Closing simulation...")
     simulation_app.close()
