@@ -23,23 +23,16 @@ import sys
 # CONFIG
 # ------------------------------------------------------------------
 USD_PATH = "/home/kheyal/dev/robotics/smart-arm-v2/Models/armv1.usd"
-ROBOT_PRIM_PATH = "/World/so101_new_calib"
+ROBOT_PRIM_PATH = "/World"
 
 # ------------------------------------------------------------------
 # SETUP: GROUND + LIGHT + CAMERA
 # ------------------------------------------------------------------
 world = World(stage_units_in_meters=1.0)
-GroundPlane(prim_path="/World/Ground", z_position=0.0)
-
-# === LIGHT ===
-stage = world.scene.stage
-light = UsdLux.DistantLight.Define(stage, Sdf.Path("/World/Light"))
-light.CreateIntensityAttr(1000)
-light.CreateColorAttr(Gf.Vec3f(1.0, 1.0, 1.0))
 
 # === CAMERA ===
 set_camera_view(
-    eye=[5.0, 0.0, 2.0],
+    eye=[2.5, 0.0, 1.0],
     target=[0.0, 0.0, 0.5],
     camera_prim_path="/OmniverseKit_Persp"
 )
