@@ -67,8 +67,8 @@ input_queue = queue.Queue()
 def input_thread():
     print("\n" + "="*60)
     print("=== LIVE JOINT CONTROL ===")
-    print("Enter 6 numbers: shoulder_pan shoulder_lift elbow_flex wrist_flex wrist_roll gripper")
-    print("Example: 0.5 -0.3 1.0 0.2 0.0 0.04")
+    print("Enter 6 numbers (in degrees): shoulder_pan shoulder_lift elbow_flex wrist_flex wrist_roll gripper")
+    print("Example: 30 -20 90 15 0 0.04")
     print("Type 'quit' to exit")
     print("="*60)
     print(">>> ", end="", flush=True)
@@ -127,8 +127,10 @@ try:
                 print(">>> ", end="", flush=True)
                 continue
 
-            print(f"Moving to: {values}")
-            start_motion(values)
+            # Convert degrees to radians for Isaac Sim
+            values_rad = np.deg2rad(values).tolist()
+            print(f"Moving to (degrees): {values} -> (radians): {values_rad}")
+            start_motion(values_rad)
 
         except queue.Empty:
             pass
