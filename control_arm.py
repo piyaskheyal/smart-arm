@@ -96,7 +96,7 @@ signal.signal(signal.SIGINT, signal_handler)
 # ------------------------------------------------------------------
 current_pose = arm.get_joint_positions().copy()
 target_pose = current_pose.copy()
-motion_steps = 15
+motion_steps = 10
 motion_counter = 0
 is_moving = False
 
