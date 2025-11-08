@@ -46,12 +46,12 @@ MAX_CHANGE_PER_SECOND = np.array([
 
 # Define the output angle range (in degrees) for each joint.
 JOINT_ANGLE_RANGES = [
-    [-180, 180],  # Joint 1
-    [-90, 90],    # Joint 2
-    [-150, 150],  # Joint 3
-    [-90, 90],    # Joint 4
-    [-180, 180],  # Joint 5
-    [0, 40],      # Joint 6
+    [-110, 110],  # Joint 1
+    [-100, 100],    # Joint 2
+    [-96, 96],  # Joint 3
+    [-95, 95],    # Joint 4
+    [-157, 157],  # Joint 5
+    [-10, 100],      # Joint 6
 ]
 
 def load_calibration(filename):
